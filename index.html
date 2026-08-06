@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Game Ular Classic</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: #0f172a;
+      color: #f8fafc;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .game-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      background-color: #1e293b;
+      padding: 24px;
+      border-radius: 16px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+
+    .scoreboard {
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+      max-width: 400px;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    .score-box {
+      background: #334155;
+      padding: 8px 16px;
+      border-radius: 8px;
+    }
+
+    #gameCanvas {
+      background-color: #020617;
+      border: 2px solid #38bdf8;
+      border-radius: 8px;
+      display: block;
+    }
+
+    .controls {
+      display: flex;
+      gap: 12px;
+      margin-top: 8px;
+    }
+
+    button {
+      background-color: #38bdf8;
+      color: #0f172a;
+      border: none;
+      padding: 10px 20px;
+      font-size: 1rem;
+      font-weight: 700;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    button:hover {
+      background-color: #7dd3fc;
+      transform: translateY(-2px);
+    }
+
+    /* D-Pad Layar Sentuh untuk Mobile */
+    .d-pad {
+      display: grid;
+      grid-template-columns: repeat(3, 50px);
+      grid-template-rows: repeat(3, 50px);
+      gap: 6px;
+      margin-top: 12px;
+    }
+
+    .d-btn {
+      background-color: #334155;
+      color: #fff;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      user-select: none;
+    }
+
+    .d-btn:active {
+      background-color: #38bdf8;
+      color: #0f172a;
+    }
+
+    .up { grid-column: 2; grid-row: 1; }
+    .left { grid-column: 1; grid-row: 2; }
+    .right { grid-column: 3; grid-row: 2; }
+    .down { grid-column: 2; grid-row: 3; }
+  </style>
+</head>
+<body>
+
+  <div class="game-container">
+    <div class="scoreboard">
+      <div class="score-box">Skor: <span id="score">0</span></div>
+      <div class="score-box">Tertinggi: <span id="highScore">0</span></div>
+    </div>
+
+    <canvas id="gameCanvas" width="400" height="400"></canvas>
+
+    <div class="controls">
+      <button id="startBtn">Mulai / Ulang</button>
+      <button id="pauseBtn">Jeda</button>
+    </div>
+
+    <!-- On-screen Navigation for Touch Devices -->
+    <div class="d-pad">
+      <button class="d-btn up" onclick="changeDirection('UP')">▲</button>
+      <button class="d-btn left" onclick="changeDirection('LEFT')">◄</button>
+      <button class="d-btn right" onclick="changeDirection('RIGHT')">►</button>
+      <button class="d-btn down" onclick="changeDirection('DOWN')">▼</button>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreElem = document.getElementById('score');
+    const highScoreElem = document.getElementById('highScore');
+    const startBtn = document.getElementById('startBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+
+    const gridSize = 20;
+    const tileCount = canvas.width / gridSize;
+
+    let snake = [];
+    let food = { x: 0, y: 0 };
+    let dx = gridSize;
+    let dy = 0;
+    let score = 0;
+    let highScore = localStorage.getItem('snakeHighScore') || 0;
+    let gameInterval = null;
+    let isPaused = false;
+    let gameRunning = false;
+
+    highScoreElem.innerText = highScore;
+
+    function initGame() {
+      snake = [
+        { x: 160, y: 200 },
+        { x: 140, y: 200 },
+        { x: 120, y: 200 }
+      ];
+      dx = gridSize;
+      dy = 0;
+      score = 0;
+      scoreElem.innerText = score;
+      isPaused = false;
+      gameRunning = true;
+      pauseBtn.innerText = 'Jeda';
+      spawnFood();
+
+      if (gameInterval) clearInterval(gameInterval);
+      gameInterval = setInterval(gameLoop, 100);
+    }
+
+    function spawnFood() {
+      food.x = Math.floor(Math.random() * tileCount) * gridSize;
+      food.y = Math.floor(Math.random() * tileCount) * gridSize;
+
+      // Pastikan makanan tidak muncul di tubuh ular
+      snake.forEach(part => {
+        if (part.x === food.x && part.y === food.y) {
+          spawnFood();
+        }
+      });
+    }
+
+    function gameLoop() {
+      if (isPaused) return;
+
+      moveSnake();
+      if (checkCollision()) {
+        gameOver();
+        return;
+      }
+      draw();
+    }
+
+    function moveSnake() {
+      const head = { x: snake[0].x + dx, y: snake[0].y + dy };
+      snake.unshift(head);
+
+      // Cek jika ular memakan makanan
+      if (head.x === food.x && head.y === food.y) {
+        score += 10;
+        scoreElem.innerText = score;
+        if (score > highScore) {
+          highScore = score;
+          highScoreElem.innerText = highScore;
+          localStorage.setItem('snakeHighScore', highScore);
+        }
+        spawnFood();
+      } else {
+        snake.pop();
+      }
+    }
+
+    function checkCollision() {
+      const head = snake[0];
+
+      // Tabrakan dengan dinding
+      if (head.x < 0 || head.x >= canvas.width || head.y < 0 || head.y >= canvas.height) {
+        return true;
+      }
+
+      // Tabrakan dengan tubuh sendiri
+      for (let i = 1; i < snake.length; i++) {
+        if (head.x === snake[i].x && head.y === snake[i].y) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    function draw() {
+      // Bersihkan Canvas
+      ctx.fillStyle = '#020617';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Gambar Makanan
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc(food.x + gridSize / 2, food.y + gridSize / 2, gridSize / 2 - 2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Gambar Ular
+      snake.forEach((part, index) => {
+        ctx.fillStyle = index === 0 ? '#38bdf8' : '#22c55e';
+        ctx.fillRect(part.x, part.y, gridSize - 1, gridSize - 1);
+      });
+    }
+
+    function changeDirection(dir) {
+      if (!gameRunning || isPaused) return;
+
+      const goingUp = dy === -gridSize;
+      const goingDown = dy === gridSize;
+      const goingRight = dx === gridSize;
+      const goingLeft = dx === -gridSize;
+
+      if (dir === 'LEFT' && !goingRight) { dx = -gridSize; dy = 0; }
+      if (dir === 'UP' && !goingDown) { dx = 0; dy = -gridSize; }
+      if (dir === 'RIGHT' && !goingLeft) { dx = gridSize; dy = 0; }
+      if (dir === 'DOWN' && !goingUp) { dx = 0; dy = gridSize; }
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft' || e.key === 'a') changeDirection('LEFT');
+      if (e.key === 'ArrowUp' || e.key === 'w') changeDirection('UP');
+      if (e.key === 'ArrowRight' || e.key === 'd') changeDirection('RIGHT');
+      if (e.key === 'ArrowDown' || e.key === 's') changeDirection('DOWN');
+    });
+
+    function gameOver() {
+      clearInterval(gameInterval);
+      gameRunning = false;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = '#ef4444';
+      ctx.font = 'bold 30px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 10);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '16px sans-serif';
+      ctx.fillText('Skor Akhir: ' + score, canvas.width / 2, canvas.height / 2 + 25);
+    }
+
+    startBtn.addEventListener('click', initGame);
+
+    pauseBtn.addEventListener('click', () => {
+      if (!gameRunning) return;
+      isPaused = !isPaused;
+      pauseBtn.innerText = isPaused ? 'Lanjut' : 'Jeda';
+    });
+
+    // Gambar awal di layar
+    ctx.fillStyle = '#020617';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '18px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Tekan "Mulai / Ulang" untuk bermain', canvas.width / 2, canvas.height / 2);
+  </script>
+</body>
+</html>
